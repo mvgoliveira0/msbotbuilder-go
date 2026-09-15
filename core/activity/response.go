@@ -76,7 +76,7 @@ func (response *DefaultResponse) SendActivity(ctx context.Context, activity sche
 
 	// if ReplyToID is set in the activity, we send reply to that particular activity
 	if activity.ReplyToID != "" {
-		respPath = fmt.Sprintf(activityResourceURL, APIVersion, activity.Conversation.ID, activity.ID)
+		respPath = fmt.Sprintf(activityResourceURL, APIVersion, activity.Conversation.ID, activity.ReplyToID)
 	}
 
 	// Send activity to client

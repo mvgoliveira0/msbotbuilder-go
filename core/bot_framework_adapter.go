@@ -22,6 +22,7 @@ package core
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/infracloudio/msbotbuilder-go/connector/auth"
@@ -73,8 +74,15 @@ func NewBotAdapter(settings AdapterSetting) (Adapter, error) {
 		settings.ChannelService = auth.ChannelService
 	}
 
+	loginURL := auth.ToChannelFromBotLoginURL[0]
+	if settings.OauthEndpoint != "" {
+		loginURL = settings.OauthEndpoint
+	} else if settings.ChannelAuthTenant != "" {
+		loginURL = fmt.Sprintf("%s%s%s", auth.ToChannelFromBotLoginURLPrefix, settings.ChannelAuthTenant, auth.ToChannelFromBotTokenEndpointPathTOCHANNELFROMBOTTOKENENDPOINTPATH)
+	}
+
 	// Prepare new config and Client
-	clientConfig, err := client.NewClientConfig(settings.CredentialProvider, auth.ToChannelFromBotLoginURL[0])
+	clientConfig, err := client.NewClientConfig(settings.CredentialProvider, loginURL)
 	if err != nil {
 		return nil, err
 	}
