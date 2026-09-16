@@ -11,9 +11,10 @@ type AlertRequest struct {
 
 // StoredReference wraps ConversationReference with metadata
 type StoredReference struct {
-	Reference schema.ConversationReference `json:"reference"`
-	TenantID  string                      `json:"tenant_id"`
-	UserID    string                      `json:"user_id"`
+	Reference    schema.ConversationReference `json:"reference"`
+	TenantID     string                       `json:"tenant_id"`
+	UserID       string                       `json:"user_id"`
+	IsSubscribed bool                         `json:"is_subscribed"`
 }
 
 // SessionResponse represents an active conversation session for GET /api/sessions
@@ -24,4 +25,5 @@ type SessionResponse struct {
 	UserName       string `json:"user_name,omitempty"`
 	ConversationID string `json:"conversation_id"`
 	ServiceURL     string `json:"service_url"`
+	IsSubscribed   bool   `json:"is_subscribed"`
 }

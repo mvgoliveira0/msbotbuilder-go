@@ -34,7 +34,7 @@ func (c *AlertController) SendAlert(w http.ResponseWriter, req *http.Request) {
 
 	err = c.botService.SendProactiveAlert(req.Context(), reqBody.TenantID, reqBody.UserID, reqBody.Message)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 

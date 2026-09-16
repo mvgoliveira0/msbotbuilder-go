@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/infracloudio/msbotbuilder-go/core"
 	"github.com/infracloudio/msbotbuilder-go/core/activity"
@@ -32,7 +33,7 @@ func NewBotService(adapter core.Adapter, repo repository.ConversationRepository)
 	}
 }
 
-// ProcessWebhookRequest parses incoming activity and saves conversation reference
+// ProcessWebhookRequest parses incoming activity and handles onboarding, commands, and options menu
 func (s *botService) ProcessWebhookRequest(req *http.Request) error {
 	ctx := req.Context()
 	act, err := s.adapter.ParseRequest(ctx, req)
@@ -40,18 +41,64 @@ func (s *botService) ProcessWebhookRequest(req *http.Request) error {
 		return fmt.Errorf("failed to parse request: %w", err)
 	}
 
-	// Save conversation reference if valid ServiceURL is present
+	// Log incoming user details
+	fmt.Printf("[Incoming Message] User ID: %q | Name: %q | AAD Object ID: %q | Tenant ID: %q | Conversation ID: %q\n",
+		act.From.ID, act.From.Name, act.From.AadObjectID, act.Conversation.TenantID, act.Conversation.ID)
+
+	ref := activity.GetCoversationReference(act)
 	if act.ServiceURL != "" {
-		ref := activity.GetCoversationReference(act)
 		_ = s.repo.Save(ref)
 	}
 
 	handler := activity.HandlerFuncs{
-		OnMessageFunc: func(turn *activity.TurnContext) (schema.Activity, error) {
-			return turn.SendActivity(activity.MsgOptionText("Mensagem recebida com sucesso!"))
-		},
 		OnConversationUpdateFunc: func(turn *activity.TurnContext) (schema.Activity, error) {
-			return schema.Activity{}, nil
+			welcomeCard := createWelcomeCard()
+			attachment := schema.Attachment{
+				ContentType: "application/vnd.microsoft.card.adaptive",
+				Content:     welcomeCard,
+			}
+			return turn.SendActivity(activity.MsgOptionAttachments([]schema.Attachment{attachment}))
+		},
+		OnMessageFunc: func(turn *activity.TurnContext) (schema.Activity, error) {
+			cmd := extractCommand(act)
+
+			switch cmd {
+			case "/start", "subscribe", "inscrever", "iniciar":
+				_ = s.repo.SetSubscription(ref, true)
+				card := createSubscribeCard()
+				attachment := schema.Attachment{
+					ContentType: "application/vnd.microsoft.card.adaptive",
+					Content:     card,
+				}
+				return turn.SendActivity(activity.MsgOptionAttachments([]schema.Attachment{attachment}))
+
+			case "/stop", "unsubscribe", "cancelar", "sair":
+				_ = s.repo.SetSubscription(ref, false)
+				card := createUnsubscribeCard()
+				attachment := schema.Attachment{
+					ContentType: "application/vnd.microsoft.card.adaptive",
+					Content:     card,
+				}
+				return turn.SendActivity(activity.MsgOptionAttachments([]schema.Attachment{attachment}))
+
+			case "/status", "status":
+				isSub := s.repo.IsSubscribed(act.Conversation.TenantID, act.From.ID)
+				card := createMenuCard(isSub)
+				attachment := schema.Attachment{
+					ContentType: "application/vnd.microsoft.card.adaptive",
+					Content:     card,
+				}
+				return turn.SendActivity(activity.MsgOptionAttachments([]schema.Attachment{attachment}))
+
+			default:
+				isSub := s.repo.IsSubscribed(act.Conversation.TenantID, act.From.ID)
+				card := createMenuCard(isSub)
+				attachment := schema.Attachment{
+					ContentType: "application/vnd.microsoft.card.adaptive",
+					Content:     card,
+				}
+				return turn.SendActivity(activity.MsgOptionAttachments([]schema.Attachment{attachment}))
+			}
 		},
 	}
 
@@ -63,15 +110,17 @@ func (s *botService) ProcessWebhookRequest(req *http.Request) error {
 	return nil
 }
 
-// SendProactiveAlert sends a proactive alert message to a specific user/tenant or latest session
+// SendProactiveAlert sends a proactive alert message ONLY if the target user is subscribed
 func (s *botService) SendProactiveAlert(ctx context.Context, tenantID, userID, message string) error {
 	var ref *schema.ConversationReference
 	var err error
 
 	if tenantID != "" && userID != "" {
-		ref, err = s.repo.Get(tenantID, userID)
+		ref, err = s.repo.GetSubscribed(tenantID, userID)
+	} else if userID != "" {
+		ref, err = s.repo.GetSubscribed("", userID)
 	} else {
-		ref, err = s.repo.GetLatest()
+		ref, err = s.repo.GetLatestSubscribed()
 	}
 
 	if err != nil {
@@ -117,23 +166,169 @@ func (s *botService) sendCardAlert(ctx context.Context, ref schema.ConversationR
 	return s.adapter.ProactiveMessage(ctx, ref, handler)
 }
 
-// GetActiveSessions returns all active conversation sessions
+// GetActiveSessions returns all active conversation sessions with subscription status
 func (s *botService) GetActiveSessions(ctx context.Context) ([]models.SessionResponse, error) {
-	refs, err := s.repo.GetAll()
-	if err != nil {
-		return nil, err
+	return s.repo.GetAllSessions()
+}
+
+func extractCommand(act schema.Activity) string {
+	text := strings.TrimSpace(strings.ToLower(act.Text))
+	if text != "" {
+		return text
 	}
 
-	sessions := make([]models.SessionResponse, 0, len(refs))
-	for _, ref := range refs {
-		sessions = append(sessions, models.SessionResponse{
-			TenantID:       ref.Conversation.TenantID,
-			UserID:         ref.User.ID,
-			AadObjectID:    ref.User.AadObjectID,
-			UserName:       ref.User.Name,
-			ConversationID: ref.Conversation.ID,
-			ServiceURL:     ref.ServiceURL,
-		})
+	if act.Value != nil {
+		if action, ok := act.Value["action"].(string); ok {
+			return strings.TrimSpace(strings.ToLower(action))
+		}
 	}
-	return sessions, nil
+	return ""
+}
+
+func createWelcomeCard() map[string]interface{} {
+	return map[string]interface{}{
+		"$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+		"type":    "AdaptiveCard",
+		"version": "1.0",
+		"body": []map[string]interface{}{
+			{
+				"type":   "TextBlock",
+				"text":   "👋 Bem-vindo ao Bot de Alertas!",
+				"size":   "large",
+				"weight": "bolder",
+				"color":  "accent",
+			},
+			{
+				"type": "TextBlock",
+				"text": "Para receber notificações proativas e alertas importantes diretamente neste chat, por favor clique no botão abaixo para se inscrever ou digite /start.",
+				"wrap": true,
+			},
+		},
+		"actions": []map[string]interface{}{
+			{
+				"type":  "Action.Submit",
+				"title": "🔔 Inscrever para Alertas",
+				"data": map[string]interface{}{
+					"action": "subscribe",
+				},
+			},
+		},
+	}
+}
+
+func createSubscribeCard() map[string]interface{} {
+	return map[string]interface{}{
+		"$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+		"type":    "AdaptiveCard",
+		"version": "1.0",
+		"body": []map[string]interface{}{
+			{
+				"type":   "TextBlock",
+				"text":   "✅ Inscrição Realizada!",
+				"size":   "large",
+				"weight": "bolder",
+				"color":  "good",
+			},
+			{
+				"type": "TextBlock",
+				"text": "Você foi cadastrado com sucesso! A partir de agora você receberá alertas proativos e notificações neste chat.",
+				"wrap": true,
+			},
+		},
+		"actions": []map[string]interface{}{
+			{
+				"type":  "Action.Submit",
+				"title": "🔕 Cancelar Inscrição",
+				"data": map[string]interface{}{
+					"action": "unsubscribe",
+				},
+			},
+		},
+	}
+}
+
+func createUnsubscribeCard() map[string]interface{} {
+	return map[string]interface{}{
+		"$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+		"type":    "AdaptiveCard",
+		"version": "1.0",
+		"body": []map[string]interface{}{
+			{
+				"type":   "TextBlock",
+				"text":   "🔕 Inscrição Cancelada",
+				"size":   "large",
+				"weight": "bolder",
+				"color":  "warning",
+			},
+			{
+				"type": "TextBlock",
+				"text": "Sua inscrição para alertas proativos foi cancelada. Você não receberá mais notificações neste chat.",
+				"wrap": true,
+			},
+		},
+		"actions": []map[string]interface{}{
+			{
+				"type":  "Action.Submit",
+				"title": "🔔 Reativar Inscrição",
+				"data": map[string]interface{}{
+					"action": "subscribe",
+				},
+			},
+		},
+	}
+}
+
+func createMenuCard(isSubscribed bool) map[string]interface{} {
+	statusText := "Status atual: 🔴 Não Inscrito"
+	if isSubscribed {
+		statusText = "Status atual: 🟢 Inscrito para Alertas"
+	}
+
+	return map[string]interface{}{
+		"$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+		"type":    "AdaptiveCard",
+		"version": "1.0",
+		"body": []map[string]interface{}{
+			{
+				"type":   "TextBlock",
+				"text":   "🤖 Menu de Opções",
+				"size":   "large",
+				"weight": "bolder",
+			},
+			{
+				"type":   "TextBlock",
+				"text":   statusText,
+				"weight": "bolder",
+				"wrap":   true,
+			},
+			{
+				"type": "TextBlock",
+				"text": "Selecione uma das opções abaixo ou digite um dos comandos disponíveis (/start, /stop, /status):",
+				"wrap": true,
+			},
+		},
+		"actions": []map[string]interface{}{
+			{
+				"type":  "Action.Submit",
+				"title": "🔔 Inscrever (/start)",
+				"data": map[string]interface{}{
+					"action": "subscribe",
+				},
+			},
+			{
+				"type":  "Action.Submit",
+				"title": "🔕 Cancelar Inscrição (/stop)",
+				"data": map[string]interface{}{
+					"action": "unsubscribe",
+				},
+			},
+			{
+				"type":  "Action.Submit",
+				"title": "ℹ️ Verificar Status (/status)",
+				"data": map[string]interface{}{
+					"action": "status",
+				},
+			},
+		},
+	}
 }
