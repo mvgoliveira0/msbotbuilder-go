@@ -2,10 +2,8 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/infracloudio/msbotbuilder-go/core"
 	"github.com/infracloudio/msbotbuilder-go/core/activity"
@@ -13,26 +11,6 @@ import (
 	"github.com/infracloudio/msbotbuilder-go/repository"
 	"github.com/infracloudio/msbotbuilder-go/schema"
 )
-
-var cardJSON = []byte(`{
-  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
-  "type": "AdaptiveCard",
-  "version": "1.0",
-  "body": [
-    {
-      "type": "TextBlock",
-      "text": "🚨 ALERTA DO SISTEMA",
-      "size": "large",
-      "weight": "bolder",
-      "color": "attention"
-    },
-    {
-      "type": "TextBlock",
-      "text": "Notificação proativa enviada com sucesso!",
-      "wrap": true
-    }
-  ]
-}`)
 
 // BotService defines business logic for bot activities and proactive messages
 type BotService interface {
@@ -82,27 +60,7 @@ func (s *botService) ProcessWebhookRequest(req *http.Request) error {
 		return fmt.Errorf("failed to process activity: %w", err)
 	}
 
-	// Trigger proactive welcome alert after 2s delay
-	go s.triggerProactiveWelcome()
-
 	return nil
-}
-
-func (s *botService) triggerProactiveWelcome() {
-	time.Sleep(2 * time.Second)
-
-	ref, err := s.repo.GetLatest()
-	if err != nil {
-		fmt.Println("[ProactiveAlert] Warning:", err)
-		return
-	}
-
-	err = s.sendCardAlert(context.Background(), *ref, "Alerta Proativo Inicial")
-	if err != nil {
-		fmt.Println("[ProactiveAlert] Error sending proactive message:", err)
-		return
-	}
-	fmt.Println("[ProactiveAlert] Proactive message sent successfully after 2s delay.")
 }
 
 // SendProactiveAlert sends a proactive alert message to a specific user/tenant or latest session
@@ -124,18 +82,35 @@ func (s *botService) SendProactiveAlert(ctx context.Context, tenantID, userID, m
 }
 
 func (s *botService) sendCardAlert(ctx context.Context, ref schema.ConversationReference, text string) error {
+	cardData := map[string]interface{}{
+		"$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+		"type":    "AdaptiveCard",
+		"version": "1.0",
+		"body": []map[string]interface{}{
+			{
+				"type":   "TextBlock",
+				"text":   "🚨 ALERTA DO SISTEMA",
+				"size":   "large",
+				"weight": "bolder",
+				"color":  "attention",
+			},
+			{
+				"type": "TextBlock",
+				"text": text,
+				"wrap": true,
+			},
+		},
+	}
+
 	handler := activity.HandlerFuncs{
 		OnMessageFunc: func(turn *activity.TurnContext) (schema.Activity, error) {
-			var obj map[string]interface{}
-			_ = json.Unmarshal(cardJSON, &obj)
-
 			attachments := []schema.Attachment{
 				{
 					ContentType: "application/vnd.microsoft.card.adaptive",
-					Content:     obj,
+					Content:     cardData,
 				},
 			}
-			return turn.SendActivity(activity.MsgOptionText("🚨 "+text), activity.MsgOptionAttachments(attachments))
+			return turn.SendActivity(activity.MsgOptionAttachments(attachments))
 		},
 	}
 
