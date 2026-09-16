@@ -33,14 +33,13 @@ func main() {
 	repo := repository.NewInMemoryConversationRepository()
 
 	// 4. Initialize Service
-	botSvc := service.NewBotService(adapter, repo)
+	alertSvc := service.NewAlertService(adapter, repo)
 
-	// 5. Initialize Controllers
-	botCtrl := controllers.NewBotController(botSvc)
-	alertCtrl := controllers.NewAlertController(botSvc)
+	// 5. Initialize Controller
+	alertCtrl := controllers.NewAlertController(alertSvc)
 
 	// 6. Initialize Router
-	router := handlers.NewRouter(botCtrl, alertCtrl)
+	router := handlers.NewRouter(alertCtrl)
 
 	// 7. Start HTTP Server
 	addr := ":" + cfg.Port

@@ -13,28 +13,28 @@ import (
 	"github.com/infracloudio/msbotbuilder-go/schema"
 )
 
-// BotService defines business logic for bot activities and proactive messages
-type BotService interface {
+// AlertService defines business logic for bot activities and proactive messages
+type AlertService interface {
 	ProcessWebhookRequest(req *http.Request) error
 	SendProactiveAlert(ctx context.Context, tenantID, userID, message string) error
 	GetActiveSessions(ctx context.Context) ([]models.SessionResponse, error)
 }
 
-type botService struct {
+type alertService struct {
 	adapter core.Adapter
 	repo    repository.ConversationRepository
 }
 
-// NewBotService creates a new BotService instance
-func NewBotService(adapter core.Adapter, repo repository.ConversationRepository) BotService {
-	return &botService{
+// NewAlertService creates a new AlertService instance
+func NewAlertService(adapter core.Adapter, repo repository.ConversationRepository) AlertService {
+	return &alertService{
 		adapter: adapter,
 		repo:    repo,
 	}
 }
 
 // ProcessWebhookRequest parses incoming activity and handles onboarding, commands, and options menu
-func (s *botService) ProcessWebhookRequest(req *http.Request) error {
+func (s *alertService) ProcessWebhookRequest(req *http.Request) error {
 	ctx := req.Context()
 	act, err := s.adapter.ParseRequest(ctx, req)
 	if err != nil {
@@ -111,7 +111,7 @@ func (s *botService) ProcessWebhookRequest(req *http.Request) error {
 }
 
 // SendProactiveAlert sends a proactive alert message ONLY if the target user is subscribed
-func (s *botService) SendProactiveAlert(ctx context.Context, tenantID, userID, message string) error {
+func (s *alertService) SendProactiveAlert(ctx context.Context, tenantID, userID, message string) error {
 	var ref *schema.ConversationReference
 	var err error
 
@@ -130,7 +130,7 @@ func (s *botService) SendProactiveAlert(ctx context.Context, tenantID, userID, m
 	return s.sendCardAlert(ctx, *ref, message)
 }
 
-func (s *botService) sendCardAlert(ctx context.Context, ref schema.ConversationReference, text string) error {
+func (s *alertService) sendCardAlert(ctx context.Context, ref schema.ConversationReference, text string) error {
 	cardData := map[string]interface{}{
 		"$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
 		"type":    "AdaptiveCard",
@@ -167,7 +167,7 @@ func (s *botService) sendCardAlert(ctx context.Context, ref schema.ConversationR
 }
 
 // GetActiveSessions returns all active conversation sessions with subscription status
-func (s *botService) GetActiveSessions(ctx context.Context) ([]models.SessionResponse, error) {
+func (s *alertService) GetActiveSessions(ctx context.Context) ([]models.SessionResponse, error) {
 	return s.repo.GetAllSessions()
 }
 

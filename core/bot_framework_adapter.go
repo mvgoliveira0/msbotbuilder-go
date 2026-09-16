@@ -1,22 +1,3 @@
-// Copyright (c) 2020 InfraCloud Technologies
-//
-// Permission is hereby granted, free of charge, to any person obtaining a copy of
-// this software and associated documentation files (the "Software"), to deal in
-// the Software without restriction, including without limitation the rights to
-// use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
-// the Software, and to permit persons to whom the Software is furnished to do so,
-// subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in all
-// copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
-// FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
-// COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
-// IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
-// CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
 package core
 
 import (
@@ -55,16 +36,13 @@ type AdapterSetting struct {
 	ReplyClient        *http.Client
 }
 
-// BotFrameworkAdapter implements Adapter and is currently the only implementation returned to the user program.
 type BotFrameworkAdapter struct {
 	AdapterSetting
 	auth.TokenValidator
 	client.Client
 }
 
-// NewBotAdapter creates and reuturns a new BotFrameworkAdapter with the specified AdapterSettings.
 func NewBotAdapter(settings AdapterSetting) (Adapter, error) {
-	// TODO: Support other credential providers - OpenID, MicrosoftApp, Government
 	settings.CredentialProvider = auth.SimpleCredentialProvider{
 		AppID:    settings.AppID,
 		Password: settings.AppPassword,
@@ -81,7 +59,6 @@ func NewBotAdapter(settings AdapterSetting) (Adapter, error) {
 		loginURL = fmt.Sprintf("%s%s%s", auth.ToChannelFromBotLoginURLPrefix, settings.ChannelAuthTenant, auth.ToChannelFromBotTokenEndpointPathTOCHANNELFROMBOTTOKENENDPOINTPATH)
 	}
 
-	// Prepare new config and Client
 	clientConfig, err := client.NewClientConfig(settings.CredentialProvider, loginURL)
 	if err != nil {
 		return nil, err
@@ -103,8 +80,6 @@ func NewBotAdapter(settings AdapterSetting) (Adapter, error) {
 	return &BotFrameworkAdapter{settings, auth.NewJwtTokenValidator(), connectorClient}, nil
 }
 
-// ProcessActivity receives an activity, processes it as specified in by the 'handler' and
-// sends it to the connector service.
 func (bf *BotFrameworkAdapter) ProcessActivity(ctx context.Context, req schema.Activity, handler activity.Handler) error {
 	turnContext := &activity.TurnContext{
 		Activity: req,
@@ -123,17 +98,12 @@ func (bf *BotFrameworkAdapter) ProcessActivity(ctx context.Context, req schema.A
 	return response.SendActivity(ctx, replyActivity)
 }
 
-// ProactiveMessage sends activity to a conversation.
-// This methods is used for Bot initiated conversation.
 func (bf *BotFrameworkAdapter) ProactiveMessage(ctx context.Context, ref schema.ConversationReference, handler activity.Handler) error {
-	// Prepare activity with conversation reference
 	activity := activity.ApplyConversationReference(schema.Activity{Type: schema.Message}, ref, true)
 	return bf.ProcessActivity(ctx, activity, handler)
 }
 
-// DeleteActivity Deletes an existing activity by Activity ID
 func (bf *BotFrameworkAdapter) DeleteActivity(ctx context.Context, activityID string, ref schema.ConversationReference) error {
-	// Prepare activity with conversation reference
 	req := activity.ApplyConversationReference(schema.Activity{Type: schema.Message}, ref, true)
 	req.ID = activityID
 
@@ -145,22 +115,15 @@ func (bf *BotFrameworkAdapter) DeleteActivity(ctx context.Context, activityID st
 	return response.DeleteActivity(ctx, req)
 }
 
-// ParseRequest parses the received activity in a HTTP reuqest to:
-//
-// 1. Validate the structure.
-//
-// 2. Authenticate the request (using authenticateRequest())
-//
-// Returns an Activity value on successfull parsing.
 func (bf *BotFrameworkAdapter) ParseRequest(ctx context.Context, req *http.Request) (schema.Activity, error) {
 	activity := schema.Activity{}
-	// Find auth headers
+
 	authHeader := req.Header.Get("Authorization")
 	if len(authHeader) == 0 {
 		return activity, errors.New("Authentication headers are missing in the request")
 	}
 
-	// Parse request body
+
 	err := json.NewDecoder(req.Body).Decode(&activity)
 	if err != nil {
 		return activity, errors.Wrap(err, "Error while parsing Bot request")
@@ -175,7 +138,6 @@ func (bf *BotFrameworkAdapter) authenticateRequest(ctx context.Context, req sche
 	return errors.Wrap(err, "Authentication failed.")
 }
 
-// UpdateActivity Updates an existing activity
 func (bf *BotFrameworkAdapter) UpdateActivity(ctx context.Context, req schema.Activity) error {
 	response, err := activity.NewActivityResponse(bf.Client)
 
