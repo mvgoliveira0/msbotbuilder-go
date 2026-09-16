@@ -62,10 +62,6 @@ func (s *botService) ProcessWebhookRequest(req *http.Request) error {
 		return fmt.Errorf("failed to parse request: %w", err)
 	}
 
-	// Log incoming user details
-	fmt.Printf("[Incoming Message] User ID: %q | Name: %q | AAD Object ID: %q | Tenant ID: %q | Conversation ID: %q\n",
-		act.From.ID, act.From.Name, act.From.AadObjectID, act.Conversation.TenantID, act.Conversation.ID)
-
 	// Save conversation reference if valid ServiceURL is present
 	if act.ServiceURL != "" {
 		ref := activity.GetCoversationReference(act)
