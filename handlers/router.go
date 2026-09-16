@@ -1,17 +1,17 @@
 package handlers
 
 import (
-	"net/http"
-
+	"github.com/gin-gonic/gin"
 	"github.com/infracloudio/msbotbuilder-go/controllers"
 )
 
-// NewRouter initializes and returns the HTTP ServeMux router for the proactive bot service
-func NewRouter(botCtrl *controllers.BotController, alertCtrl *controllers.AlertController) *http.ServeMux {
-	mux := http.NewServeMux()
+// NewRouter initializes and returns the Gin engine router for the proactive bot service
+func NewRouter(botCtrl *controllers.BotController, alertCtrl *controllers.AlertController) *gin.Engine {
+	router := gin.New()
+	router.Use(gin.Recovery())
 
-	mux.HandleFunc("/api/messages", botCtrl.HandleMessage)
-	mux.HandleFunc("/api/alerts", alertCtrl.SendAlert)
+	router.POST("/api/messages", gin.WrapF(botCtrl.HandleMessage))
+	router.POST("/api/alerts", gin.WrapF(alertCtrl.SendAlert))
 
-	return mux
+	return router
 }

@@ -19,11 +19,6 @@ func NewBotController(botService service.BotService) *BotController {
 
 // HandleMessage handles POST /api/messages
 func (c *BotController) HandleMessage(w http.ResponseWriter, req *http.Request) {
-	if req.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	err := c.botService.ProcessWebhookRequest(req)
 	if err != nil {
 		fmt.Println("[BotController] Error processing request:", err)
