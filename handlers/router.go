@@ -12,6 +12,7 @@ func NewRouter(botCtrl *controllers.BotController, alertCtrl *controllers.AlertC
 
 	router.POST("/api/messages", gin.WrapF(botCtrl.HandleMessage))
 	router.POST("/api/alerts", gin.WrapF(alertCtrl.SendAlert))
+	router.GET("/api/sessions", gin.WrapF(alertCtrl.GetSessions))
 
 	return router
 }

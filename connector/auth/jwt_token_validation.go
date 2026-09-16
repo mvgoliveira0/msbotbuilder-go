@@ -142,10 +142,41 @@ func (jv *JwtTokenValidator) getIdentity(jwtString string) (ClaimsIdentity, erro
 		return nil, errors.New("Could not find public key")
 	}
 
-	// TODO: Add options verify_aud and verify_exp
-	token, err := jwt.Parse(jwtString, getKey)
+	// Use Parser with SkipClaimsValidation: true to allow custom leeway handling for time-based claims
+	parser := &jwt.Parser{
+		SkipClaimsValidation: true,
+	}
+
+	token, err := parser.Parse(jwtString, getKey)
 	if err != nil {
 		return nil, err
+	}
+
+	if !token.Valid {
+		return nil, errors.New("Unauthorized. Invalid token signature or format")
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return nil, errors.New("Unauthorized. Invalid token claims format")
+	}
+
+	now := time.Now().Unix()
+	leeway := int64(120) // 2 minutes in seconds
+
+	// Validate nbf (Not Before) with 2-minute leeway
+	if !claims.VerifyNotBefore(now+leeway, false) {
+		return nil, errors.New("Token is not valid yet")
+	}
+
+	// Validate exp (Expiration) with 2-minute leeway
+	if !claims.VerifyExpiresAt(now-leeway, false) {
+		return nil, errors.New("Token is expired")
+	}
+
+	// Validate iat (Issued At) with 2-minute leeway
+	if !claims.VerifyIssuedAt(now+leeway, false) {
+		return nil, errors.New("Token used before issued")
 	}
 
 	// Check allowed signing algorithms
@@ -163,7 +194,6 @@ func (jv *JwtTokenValidator) getIdentity(jwtString string) (ClaimsIdentity, erro
 		return nil, errors.New("Unauthorized. Invalid signing algorithm")
 	}
 
-	claims := token.Claims.(jwt.MapClaims)
 	return NewClaimIdentity(claims, true), nil
 }
 

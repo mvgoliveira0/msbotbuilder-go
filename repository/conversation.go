@@ -39,11 +39,23 @@ func (r *InMemoryConversationRepository) Save(ref schema.ConversationReference) 
 	defer r.mu.Unlock()
 
 	key := ref.Conversation.ID
+	r.data[key] = ref
+
 	if ref.User.ID != "" {
-		key = fmt.Sprintf("%s_%s", ref.Conversation.TenantID, ref.User.ID)
+		r.data[ref.User.ID] = ref
+		if ref.Conversation.TenantID != "" {
+			keyUser := fmt.Sprintf("%s_%s", ref.Conversation.TenantID, ref.User.ID)
+			r.data[keyUser] = ref
+		}
+	}
+	if ref.User.AadObjectID != "" {
+		r.data[ref.User.AadObjectID] = ref
+		if ref.Conversation.TenantID != "" {
+			keyAAD := fmt.Sprintf("%s_%s", ref.Conversation.TenantID, ref.User.AadObjectID)
+			r.data[keyAAD] = ref
+		}
 	}
 
-	r.data[key] = ref
 	r.latest = &ref
 	return nil
 }
@@ -53,12 +65,22 @@ func (r *InMemoryConversationRepository) Get(tenantID, userID string) (*schema.C
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	key := fmt.Sprintf("%s_%s", tenantID, userID)
-	ref, exists := r.data[key]
-	if !exists {
-		return nil, fmt.Errorf("conversation reference not found for tenant: %s, user: %s", tenantID, userID)
+	// 1. Try tenantID_userID key if tenantID is provided
+	if tenantID != "" && userID != "" {
+		key := fmt.Sprintf("%s_%s", tenantID, userID)
+		if ref, exists := r.data[key]; exists {
+			return &ref, nil
+		}
 	}
-	return &ref, nil
+
+	// 2. Try direct userID lookup (works for WebChat/Emulator or direct user IDs)
+	if userID != "" {
+		if ref, exists := r.data[userID]; exists {
+			return &ref, nil
+		}
+	}
+
+	return nil, fmt.Errorf("conversation reference not found for tenant: %q, user: %q", tenantID, userID)
 }
 
 // GetLatest retrieves the most recently stored conversation reference
@@ -72,14 +94,22 @@ func (r *InMemoryConversationRepository) GetLatest() (*schema.ConversationRefere
 	return r.latest, nil
 }
 
-// GetAll returns all stored conversation references
+// GetAll returns all stored conversation references deduplicated
 func (r *InMemoryConversationRepository) GetAll() ([]schema.ConversationReference, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	refs := make([]schema.ConversationReference, 0, len(r.data))
+	seen := make(map[string]bool)
+	refs := make([]schema.ConversationReference, 0)
 	for _, ref := range r.data {
-		refs = append(refs, ref)
+		key := ref.Conversation.ID
+		if key == "" {
+			key = fmt.Sprintf("%s_%s", ref.Conversation.TenantID, ref.User.ID)
+		}
+		if !seen[key] {
+			seen[key] = true
+			refs = append(refs, ref)
+		}
 	}
 	return refs, nil
 }

@@ -42,3 +42,16 @@ func (c *AlertController) SendAlert(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "Alert sent successfully"})
 }
+
+// GetSessions handles GET /api/sessions
+func (c *AlertController) GetSessions(w http.ResponseWriter, req *http.Request) {
+	sessions, err := c.botService.GetActiveSessions(req.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(sessions)
+}

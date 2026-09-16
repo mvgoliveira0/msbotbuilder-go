@@ -9,6 +9,7 @@ import (
 
 	"github.com/infracloudio/msbotbuilder-go/core"
 	"github.com/infracloudio/msbotbuilder-go/core/activity"
+	"github.com/infracloudio/msbotbuilder-go/models"
 	"github.com/infracloudio/msbotbuilder-go/repository"
 	"github.com/infracloudio/msbotbuilder-go/schema"
 )
@@ -37,6 +38,7 @@ var cardJSON = []byte(`{
 type BotService interface {
 	ProcessWebhookRequest(req *http.Request) error
 	SendProactiveAlert(ctx context.Context, tenantID, userID, message string) error
+	GetActiveSessions(ctx context.Context) ([]models.SessionResponse, error)
 }
 
 type botService struct {
@@ -59,6 +61,10 @@ func (s *botService) ProcessWebhookRequest(req *http.Request) error {
 	if err != nil {
 		return fmt.Errorf("failed to parse request: %w", err)
 	}
+
+	// Log incoming user details
+	fmt.Printf("[Incoming Message] User ID: %q | Name: %q | AAD Object ID: %q | Tenant ID: %q | Conversation ID: %q\n",
+		act.From.ID, act.From.Name, act.From.AadObjectID, act.Conversation.TenantID, act.Conversation.ID)
 
 	// Save conversation reference if valid ServiceURL is present
 	if act.ServiceURL != "" {
@@ -138,4 +144,25 @@ func (s *botService) sendCardAlert(ctx context.Context, ref schema.ConversationR
 	}
 
 	return s.adapter.ProactiveMessage(ctx, ref, handler)
+}
+
+// GetActiveSessions returns all active conversation sessions
+func (s *botService) GetActiveSessions(ctx context.Context) ([]models.SessionResponse, error) {
+	refs, err := s.repo.GetAll()
+	if err != nil {
+		return nil, err
+	}
+
+	sessions := make([]models.SessionResponse, 0, len(refs))
+	for _, ref := range refs {
+		sessions = append(sessions, models.SessionResponse{
+			TenantID:       ref.Conversation.TenantID,
+			UserID:         ref.User.ID,
+			AadObjectID:    ref.User.AadObjectID,
+			UserName:       ref.User.Name,
+			ConversationID: ref.Conversation.ID,
+			ServiceURL:     ref.ServiceURL,
+		})
+	}
+	return sessions, nil
 }
