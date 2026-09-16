@@ -16,7 +16,7 @@ import (
 // AlertService defines business logic for bot activities and proactive messages
 type AlertService interface {
 	ProcessWebhookRequest(req *http.Request) error
-	SendProactiveAlert(ctx context.Context, tenantID, userID, message string) error
+	SendProactiveAlert(ctx context.Context, tenantID, userID, conversationID, message string) error
 	GetActiveSessions(ctx context.Context) ([]models.SessionResponse, error)
 }
 
@@ -110,17 +110,21 @@ func (s *alertService) ProcessWebhookRequest(req *http.Request) error {
 	return nil
 }
 
-// SendProactiveAlert sends a proactive alert message ONLY if the target user is subscribed
-func (s *alertService) SendProactiveAlert(ctx context.Context, tenantID, userID, message string) error {
+// SendProactiveAlert sends a proactive alert message ONLY if a valid target identifier (userID or conversationID) is provided and subscribed
+func (s *alertService) SendProactiveAlert(ctx context.Context, tenantID, userID, conversationID, message string) error {
+	if conversationID == "" && userID == "" {
+		return fmt.Errorf("cannot send alert: missing target identifier (user_id or conversation_id is required)")
+	}
+
 	var ref *schema.ConversationReference
 	var err error
 
-	if tenantID != "" && userID != "" {
-		ref, err = s.repo.GetSubscribed(tenantID, userID)
-	} else if userID != "" {
-		ref, err = s.repo.GetSubscribed("", userID)
+	if conversationID != "" {
+		ref, err = s.repo.GetSubscribed(tenantID, userID, conversationID)
+	} else if tenantID != "" && userID != "" {
+		ref, err = s.repo.GetSubscribed(tenantID, userID, "")
 	} else {
-		ref, err = s.repo.GetLatestSubscribed()
+		ref, err = s.repo.GetSubscribed("", userID, "")
 	}
 
 	if err != nil {

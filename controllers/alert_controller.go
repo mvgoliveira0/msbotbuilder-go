@@ -46,7 +46,7 @@ func (c *AlertController) SendAlert(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	err = c.alertService.SendProactiveAlert(req.Context(), reqBody.TenantID, reqBody.UserID, reqBody.Message)
+	err = c.alertService.SendProactiveAlert(req.Context(), reqBody.TenantID, reqBody.UserID, reqBody.ConversationID, reqBody.Message)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return

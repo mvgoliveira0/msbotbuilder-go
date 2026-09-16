@@ -18,8 +18,8 @@ type StoredSession struct {
 type ConversationRepository interface {
 	Save(ref schema.ConversationReference) error
 	SetSubscription(ref schema.ConversationReference, isSubscribed bool) error
-	Get(tenantID, userID string) (*schema.ConversationReference, error)
-	GetSubscribed(tenantID, userID string) (*schema.ConversationReference, error)
+	Get(tenantID, userID, conversationID string) (*schema.ConversationReference, error)
+	GetSubscribed(tenantID, userID, conversationID string) (*schema.ConversationReference, error)
 	GetLatest() (*schema.ConversationReference, error)
 	GetLatestSubscribed() (*schema.ConversationReference, error)
 	GetAllSessions() ([]models.SessionResponse, error)
@@ -107,31 +107,36 @@ func (r *InMemoryConversationRepository) storeKeys(session *StoredSession) {
 	r.latest = session
 }
 
-// Get retrieves a reference by tenant ID and user ID regardless of subscription
-func (r *InMemoryConversationRepository) Get(tenantID, userID string) (*schema.ConversationReference, error) {
+// Get retrieves a reference by tenant ID, user ID, or conversation ID regardless of subscription
+func (r *InMemoryConversationRepository) Get(tenantID, userID, conversationID string) (*schema.ConversationReference, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	session := r.findSession(tenantID, userID)
+	session := r.findSession(tenantID, userID, conversationID)
 	if session == nil {
-		return nil, fmt.Errorf("conversation reference not found for tenant: %q, user: %q", tenantID, userID)
+		return nil, fmt.Errorf("conversation reference not found for tenant: %q, user: %q, conversation: %q", tenantID, userID, conversationID)
 	}
 	return &session.Reference, nil
 }
 
-// GetSubscribed retrieves a reference by tenant ID and user ID ONLY if subscribed
-func (r *InMemoryConversationRepository) GetSubscribed(tenantID, userID string) (*schema.ConversationReference, error) {
+// GetSubscribed retrieves a reference by tenant ID, user ID, or conversation ID ONLY if subscribed
+func (r *InMemoryConversationRepository) GetSubscribed(tenantID, userID, conversationID string) (*schema.ConversationReference, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	session := r.findSession(tenantID, userID)
+	session := r.findSession(tenantID, userID, conversationID)
 	if session == nil || !session.IsSubscribed {
-		return nil, fmt.Errorf("user %q (tenant %q) is not subscribed to proactive alerts", userID, tenantID)
+		return nil, fmt.Errorf("conversation reference for conversation %q / user %q is not subscribed to proactive alerts", conversationID, userID)
 	}
 	return &session.Reference, nil
 }
 
-func (r *InMemoryConversationRepository) findSession(tenantID, userID string) *StoredSession {
+func (r *InMemoryConversationRepository) findSession(tenantID, userID, conversationID string) *StoredSession {
+	if conversationID != "" {
+		if session, exists := r.data[conversationID]; exists {
+			return session
+		}
+	}
 	if tenantID != "" && userID != "" {
 		key := fmt.Sprintf("%s_%s", tenantID, userID)
 		if session, exists := r.data[key]; exists {
@@ -146,12 +151,12 @@ func (r *InMemoryConversationRepository) findSession(tenantID, userID string) *S
 	return nil
 }
 
-// IsSubscribed checks if a user is subscribed
+// IsSubscribed checks if a user/conversation is subscribed
 func (r *InMemoryConversationRepository) IsSubscribed(tenantID, userID string) bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	session := r.findSession(tenantID, userID)
+	session := r.findSession(tenantID, userID, "")
 	return session != nil && session.IsSubscribed
 }
 
